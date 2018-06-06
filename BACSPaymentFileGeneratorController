@@ -1,0 +1,23 @@
+public class BACSPaymentFileGeneratorController {
+    public String dateLine{get;set;}
+    public String debitLine{get;set;}
+    public List<String> creditString{get; set;}
+    public String terminationString{get;set;}
+    public String selectedBatch {get;set;}
+    public BACSPaymentFileGeneratorController() 
+    {                   
+        terminationString='T';
+        dateLine = ApexPages.currentPage().getParameters().get('dateLine'); //passed through URL from lightning component
+        debitLine = ApexPages.currentPage().getParameters().get('debitLine'); //passed through URL from lightning component  
+        selectedBatch = ApexPages.currentPage().getParameters().get('id'); //get newly created batch reference object from lightning component
+        System.debug('selectedBatch===='+selectedBatch);
+        dateLine += '\r\n'; 
+        debitLine += '\r\n';
+        creditString = new List<String>();
+        for(Payment__c p: [SELECT Amount_Paid__c, Name__c, Account_Number__c, Sort_Code__c, Contact__r.Client_Reference_BACS__c FROM Payment__c WHERE Batch_Reference__c=:selectedBatch])
+        {
+            creditString.add('C,' + p.Amount_Paid__c + ',' + p.Name__c + ',' + p.Account_Number__c + ',' + p.Sort_Code__c + ',' + p.Contact__r.Client_Reference_BACS__c + '\r\n');
+            System.debug('Result:'+creditString);
+        }
+    }      
+}
