@@ -1,0 +1,78 @@
+({
+    fetchPayments : function(component, event) {
+        var startDate = component.get("v.DateDueStart");
+        var endDate = component.get("v.DateDueEnd");
+
+        if(startDate > endDate){
+            alert('Date Due Start is greater than Date Due End');
+        }
+        else{
+            var action = component.get("c.getPayments");
+            action.setParams({"DateDueStart":startDate, "DateDueEnd":endDate});
+            action.setCallback(this, function(response){
+                console.log(response.getState());
+                if(response.getState() == 'SUCCESS'){
+                    if(response.getReturnValue() != undefined){      
+                        component.set("v.columns",[
+                            {label:'Payment Id', fieldName:'Name',type:'text',sortable:'true'},
+                            {label:'Client Reference', fieldName:'Client_Reference__c',type:'text',sortable:'true'},
+                            {label:'Client Status', fieldName:'Client_Status__c',type:'text'},
+                            {label:'Amount', fieldName:'Amount_Paid__c', type:'currency', typeAttribute:{currencyCode:'GBP'}, sortable:'true'},
+                            {label:'Payment Code', fieldName:'Payment_Code_Name__c',type:'text'},
+                            {label:'Payment Type', fieldName:'Payment_Type__c',type:'text'},
+                            {label:'Date Due', fieldName:'Date_Due__c',type:'date',sortable:'true'},
+                            {label:'Date Paid', fieldName:'Date_Paid__c',type:'date'}
+                        ]);
+                        component.set("v.paymentRecords", response.getReturnValue());
+                    }
+                }
+            });
+            $A.enqueueAction(action);
+        }
+    },
+    
+    generateFiles : function(component, event) {
+        var workspaceAPI = component.find("workspace");
+        var BACSPaymentDate = component.get("v.BACSPaymentDate");
+        var action = component.get("c.generateBACSFile");
+        action.setParams({
+            "selectedPaymentIds": component.get("v.rowsSelected"),
+            "BACSPaymentDate": BACSPaymentDate
+        });
+        action.setCallback(this, function(response){
+            console.log(response.getState());
+            var stringResult = response.getReturnValue();
+            console.log(stringResult);
+            if(response.getState() == 'SUCCESS'){
+                workspaceAPI.openTab({
+                    url: stringResult,
+                    focus: false
+                }).then(function(response) {
+                    component.set("v.paymentTabId",response);
+                }).catch(function(error) {
+                    console.log(error);
+                });
+                $A.get('e.force:refreshView').fire();
+            }
+        });
+        $A.enqueueAction(action);
+    },
+    
+    sortData: function (cmp, fieldName, sortDirection) {
+        var data = cmp.get("v.paymentRecords");
+        var reverse = sortDirection !== 'asc';
+        //sorts the rows based on the column header that's clicked
+        data.sort(this.sortBy(fieldName, reverse))
+        cmp.set("v.paymentRecords", data);
+    },
+    sortBy: function (field, reverse, primer) {
+        var key = primer ?
+            function(x) {return primer(x[field])} :
+        function(x) {return x[field]};
+        //checks if the two rows should switch places
+        reverse = !reverse ? 1 : -1;
+        return function (a, b) {
+            return a = key(a), b = key(b), reverse * ((a > b) - (b > a));
+        }
+    }
+})
