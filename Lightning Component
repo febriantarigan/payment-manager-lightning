@@ -1,0 +1,90 @@
+<aura:component implements="force:appHostable,flexipage:availableForAllPageTypes" access="global" controller="BACSPaymentManagerController">
+    <lightning:workspaceAPI aura:id="workspace" />
+    <aura:attribute name="BACSPaymentDate" type="Date" />
+    <aura:attribute name="DateDueStart" type="Date"/>
+    <aura:attribute name="DateDueEnd" type="Date" />
+    <aura:attribute name="NextNDays" type="Integer" />
+    <aura:attribute name="ShowModal" type="Boolean" default="false"/>
+    <aura:attribute name="BACSConfirmation" type="Boolean" default="false"/>
+    <aura:attribute name="BACSConfirmationAnswer" type="Boolean" default="false"/>
+    <aura:attribute name="Notification" type="String" default=""/>
+    <aura:attribute name="paymentRecords" type="List" />
+    <aura:attribute name="selectedRows" type="List" />
+    <aura:attribute name="rowsSelected" type="List" />
+    <aura:attribute name="columns" type="List" />   
+    <aura:handler name="init" action="{!c.init}" value="{!this}" />
+    <aura:handler event="aura:waiting" action="{!c.waiting}"/>
+    <aura:handler event="aura:doneWaiting" action="{!c.doneWaiting}"/>
+    <aura:attribute name="wait" type="String"/>
+    
+    <lightning:card title="BACS" iconName="standard:file">
+        <div class="wait">
+            <div id= "showspinner" class="feature-showspinner" > 
+                <div class="slds-spinner_container" >
+                    <div class="slds-spinner--brand slds-spinner slds-spinner--large" role="alert">
+                        <span class="slds-assistive-text">Loading</span>
+                        <div class="slds-spinner__dot-a"></div>
+                        <div class="slds-spinner__dot-b"></div>
+                    </div>
+                </div>
+            </div>    
+        </div>
+        <!-- INPUT GRID -->
+        <div class="slds-grid_vertical slds-gutters">
+            <div class="slds-col slds-grid ">
+                <div class="slds-col slds-align_absolute-center">
+                    <span>Please select payments with due<br/>dates between the following dates</span>
+                </div>
+                <div class="slds-col slds-grid_vertical">
+                    <div class="slds-col">
+                        <lightning:input type="date" label="Date Due Start" value="{!v.DateDueStart}" required="true"/>
+                    </div>
+                    <div class="slds-col">
+                        <lightning:input type="date" label="Date Due End" value="{!v.DateDueEnd}" required="true"/>
+                    </div>
+                </div>
+                <div class="slds-col slds-align_absolute-center">
+                    <lightning:button class="slds-button_brand" label="Fetch Payments" onclick="{!c.fetchPayments}"/>
+                </div>
+            </div>
+            <div class="slds-align_absolute-center"><hr width="90%" size="3px"/></div>
+            <div class="slds-col slds-grid">
+                <div class="slds-col">
+                    <span class="slds-align_absolute-center">Please select BACS Payment Date</span>
+                </div>
+                <div class="slds-col">
+                    <lightning:input type="date" label="BACS Payment Date" value="{!v.BACSPaymentDate}" />
+                </div>
+                <div class="slds-col slds-align_absolute-center">
+                    <lightning:button class="slds-button_brand" label="Generate File" onclick="{!c.generateFiles}"/>
+                </div>
+            </div>
+        </div>
+        <div class="slds-grid slds-wrap slds-p-around_medium">
+            <div class="slds-col slds-size_12-of-12 slds-p-around_xx-small">
+                <lightning:datatable data="{!v.paymentRecords}" columns="{!v.columns}" keyField="Id"
+                                     selectedRows="{!v.selectedRows}" onrowselection="{!c.updateSelectedRows}"
+                                     onsort="{!c.updateColumnSorting}" />
+            </div>
+        </div>
+        <aura:if isTrue="{!v.ShowModal}">
+            <div class="demo-only" style="height: 640px;">
+                <section role="dialog" tabindex="-1" aria-labelledby="modal-heading-01" aria-modal="true" aria-describedby="modal-content-id-1" class="slds-modal slds-fade-in-open slds-modal_medium">
+                    <div class="slds-modal__container">
+                        <header class="slds-modal__header">
+                            <h2 id="modal-heading-01" class="slds-text-heading_medium slds-hyphenate">Generate File</h2>
+                        </header>
+                        <div class="slds-modal__content slds-p-around_medium slds-text-heading_medium slds-text-align--center" id="modal-content-id-1" style="color:red">
+                            <p>{!v.Notification}</p>
+                        </div>
+                        <footer class="slds-modal__footer">
+                            <button class="slds-button slds-button_neutral" type="button" onclick="{!c.getHomePage}">Cancel</button>
+                            <button class="slds-button slds-button_brand" type="button" onclick="{!c.batchConfirmation}">Proceed</button>
+                        </footer>
+                    </div>
+                </section>
+                <div class="slds-backdrop slds-backdrop_open"></div>
+            </div>
+        </aura:if>
+    </lightning:card>
+</aura:component>
