@@ -1,0 +1,80 @@
+({
+    init : function(component, event, helper) {
+        var workspaceAPI = component.find("workspace");
+        var today = new Date();
+        var monthDigit = today.getMonth() + 1;
+        if (monthDigit <= 9) {
+            monthDigit = '0' + monthDigit;
+        }
+        component.set("v.DateDueStart", today.getFullYear() + "-" + monthDigit + "-" + today.getDate());
+    },
+    
+    fetchPayments : function(component, event, helper) {
+        helper.fetchPayments(component, event);
+    },
+    
+    batchConfirmation : function(component, event, helper) {
+        console.log("Batch Confirmation>>>");
+        var x = component.get("v.BACSConfirmation");
+        component.set("v.BACSConfirmation", true);
+        console.log(x);
+        helper.generateFiles(component,event);
+        component.set("v.ShowModal",false);
+        //document.getElementById("showNotification").style.display = "none";
+    },
+    
+    generateFiles : function(component,event,helper){
+        var BACSPaymentDate = component.get("v.BACSPaymentDate");
+        var action = component.get("c.verifyPayments");
+        var confirmationMessage;
+        action.setParams({
+            "selectedPaymentIds": component.get("v.rowsSelected"),
+			"BACSPaymentDate": BACSPaymentDate
+        });
+        action.setCallback(this, function(response){
+            if(response.getState() == 'SUCCESS'){
+                confirmationMessage = response.getReturnValue();
+                component.set("v.Notification", confirmationMessage);
+                component.set("v.ShowModal", true);                
+            }
+        });
+        $A.enqueueAction(action);
+    },
+    
+    updateSelectedRows : function(component, event, helper) {
+        var selectedRows = event.getParam('selectedRows');        
+        var setRows = [];
+        for (var i = 0; i < selectedRows.length; i++){
+            setRows.push(selectedRows[i].Id);
+        }
+        console.log(setRows);
+        console.log(setRows.length);
+        component.set("v.rowsSelected", setRows); // <-- Crashed datatable if "v.selectedRows"
+    },
+    
+    getHomePage : function(component, event, helper) {
+        console.log("Home Page>>>>");
+        var x = component.get("v.BACSConfirmation");
+        console.log(x);
+        component.set("v.ShowModal", false);
+        //		document.getElementById("showNotification").style.display = "none";
+    },
+    
+    waiting : function(component, event, helper) {
+        //component.set("v.wait", "updating...");
+        document.getElementById("showspinner").style.display = "block";
+    },
+    doneWaiting : function(component, event, helper) {
+        //component.set("v.wait", "");
+        document.getElementById("showspinner").style.display = "none";
+    },
+    
+    updateColumnSorting: function (cmp, event, helper) {
+        var fieldName = event.getParam('fieldName');
+        var sortDirection = event.getParam('sortDirection');
+        // assign the latest attribute with the sorted column fieldName and sorted direction
+        cmp.set("v.sortedBy", fieldName);
+        cmp.set("v.sortedDirection", sortDirection);
+        helper.sortData(cmp, fieldName, sortDirection);
+    }
+})
