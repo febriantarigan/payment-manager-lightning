@@ -1,0 +1,1 @@
+<apex:page controller="BACSPaymentFileGeneratorController"  contentType="text/plain#PaymentFile.txt" cache="true">{!dateLine}{!debitLine}<apex:repeat value="{!creditString}" var="creditLine">{!creditLine}</apex:repeat>{!terminationString}</apex:page>
