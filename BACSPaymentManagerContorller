@@ -1,0 +1,150 @@
+public class BACSPaymentManagerController {
+    @AuraEnabled
+    public static List<Payment__c> getPayments(String DateDueStart, String DateDueEnd){
+        Date startDate = Date.valueOf(DateDueStart);
+        Date endDate = Date.valueOf(DateDueEnd);
+        
+        if(DateDueStart != null && DateDueEnd != null){
+            List<Payment__c> allFilteredPayments = [SELECT Client_Reference__c, Client_Status__c, Payment_Code_Name__c, Date_Paid__c, Amount_Paid__c, Name, Name__c, Account_Number__c, Sort_Code__c, Contact__r.Client_Reference__c, Contact__r.Status__c, Contact__r.Client_Reference_BACS__c, Date_Due__c, Payment_Code__r.Name, Payment_Type__c FROM Payment__c WHERE Payment_Type__c = 'BACS' AND Date_Paid__c =NULL AND Confirm_Payment__c = false AND Date_Due__c >= :startDate AND Date_Due__c <=:endDate];
+            return allFilteredPayments;      
+        }
+        else{
+            List<Payment__c> allFilteredPayments = [SELECT Client_Reference__c, Client_Status__c, Payment_Code_Name__c, Date_Paid__c, Amount_Paid__c, Name, Name__c, Account_Number__c, Sort_Code__c, Contact__r.Client_Reference__c, Contact__r.Status__c, Contact__r.Client_Reference_BACS__c, Date_Due__c, Payment_Code__r.Name, Payment_Type__c FROM Payment__c WHERE Payment_Type__c = 'BACS' AND Date_Paid__c =NULL AND Confirm_Payment__c = false];
+            return allFilteredPayments;      
+        }
+    }
+    
+    @AuraEnabled
+    public static String verifyPayments(List<Id> selectedPaymentIds, String BACSPaymentDate){
+		Date paymentDate = Date.valueOf(BACSPaymentDate);
+        Integer day = paymentDate.day();
+        String dayString;
+        Integer month = paymentDate.month();
+        String monthString;
+        Integer year = paymentDate.year();
+        String yearString = String.valueOf(year);
+        if(day > 9) 
+            dayString = String.Valueof(day);
+        else
+            dayString = '0'+day;    
+        
+        if(month > 9) 
+            monthString = String.Valueof(month);
+        else
+            monthString = '0'+month;
+        
+        String paymentDateString= dayString+'/'+monthString+'/'+yearString;
+
+        List<Payment__c> selectedPayments = [SELECT Amount_Paid__c FROM Payment__c WHERE Id IN: selectedPaymentIds];
+        Integer numberOfPayments = 0;
+        Decimal totalAmount = 0;        
+        
+        if(selectedPayments.size()>0){
+            for(Payment__c pay : selectedPayments){
+                totalAmount += pay.Amount_Paid__c;
+                numberOfPayments += 1;
+            }
+        }
+        return 'You are about to create a BACS file with '+numberOfPayments+' payment records, a BACS payment date of '+paymentDateString+' and total payment amount of £'+totalAmount+'. Payments will be updated with date paid of '+paymentDateString+'. Do you wish to proceed?';
+    }
+    
+    @AuraEnabled
+    public static String generateBACSFile(List<Id> selectedPaymentIds, String BACSPaymentDate){
+        Date paymentDate = Date.valueOf(BACSPaymentDate);
+        Datetime paymentDatetime = paymentDate;
+        Datetime currentDatetime = DateTime.now();
+        
+        String userID = UserInfo.getUserId();
+        String currentDay,currentMonth,currentYear,currentHour,currentMinute,currentSecond;
+        currentYear = String.valueOf(currentDatetime.year());
+        if(currentDatetime.day() > 9) 
+            currentDay = String.Valueof(currentDatetime.day());
+        else
+            currentDay = '0'+currentDatetime.day();    
+        
+        if(currentDatetime.month() > 9) 
+            currentMonth = String.Valueof(currentDatetime.month());
+        else
+            currentMonth = '0'+currentDatetime.month();
+        
+        if(currentDatetime.hour() > 9) 
+            currentHour = String.Valueof(currentDatetime.hour());
+        else
+            currentHour = '0'+currentDatetime.hour();  
+        
+        if(currentDatetime.minute() > 9) 
+            currentMinute = String.Valueof(currentDatetime.minute());
+        else
+            currentMinute = '0'+currentDatetime.minute();  
+        
+        if(currentDatetime.second() > 9) 
+            currentSecond = String.Valueof(currentDatetime.second());
+        else
+            currentSecond = '0'+currentDatetime.second();  
+        
+        Integer day = paymentDatetime.day();
+        String dayString;
+        Integer month = paymentDatetime.month();
+        String monthString;
+        Integer year = paymentDatetime.year();
+        
+        if(day > 9) 
+            dayString = String.Valueof(day);
+        else
+            dayString = '0'+day;    
+        
+        if(month > 9) 
+            monthString = String.Valueof(month);
+        else
+            monthString = '0'+month;
+        
+        String dateLine = 'H,' + currentYear + currentMonth + currentDay + ',' + userID + currentYear + currentMonth + currentDay;
+        String terminationString = 'T';    
+        Integer hour = paymentDatetime.hour();
+        String hourString;
+        if(hour > 9) 
+            hourString = String.Valueof(hour);
+        else
+            hourString = '0'+hour;  
+        
+        Integer minute = paymentDatetime.minute();
+        String minuteString;
+        if(minute > 9) 
+            minuteString = String.Valueof(minute);
+        else
+            minuteString = '0'+minute;  
+        Integer second = paymentDatetime.second();
+        String secondString;
+        if(second > 9) 
+            secondString = String.Valueof(second);
+        else
+            secondString = '0'+second;  
+        String bacsDebitAccountReference = 'SF'+ currentYear + currentMonth + currentDay + currentHour + currentMinute + currentSecond;
+        
+        bacsDetails__c bacsDetails = bacsDetails__c.getInstance();
+        String debitLine = 'D,' + year + monthString + dayString + ',' + bacsDebitAccountReference + ',' + bacsDetails.sortCode__c + '-' + bacsDetails.Account_Number_For_BAS_Debit__c;
+        
+        String bacsReferenceName = 'SF'+ currentYear + currentMonth + currentDay + currentHour + currentMinute + currentSecond;
+        
+        Batch_Reference__c br = new Batch_Reference__c(Name=bacsReferenceName);
+        insert br;
+        
+        Integer numberOfPayments = 0;
+        Decimal totalAmount = 0;
+        
+        List<Payment__c> selectedPayment = new List<Payment__c>();
+        for(Payment__c pay : [SELECT Id, Name, Amount_Paid__c, Date_Paid__c, Date_Due__c FROM Payment__c WHERE Id IN: selectedPaymentIds]){
+            pay.Batch_Reference__c = br.id;
+            pay.Date_Paid__c = paymentDate;
+            totalAmount += pay.Amount_Paid__c;
+            numberOfPayments += 1;
+            selectedPayment.add(pay);
+        }
+        br.Total_Amount__c = totalAmount;
+        br.Number_of_Payments__c = numberOfPayments;
+        update selectedPayment;
+        update br;
+        
+        return '/apex/BACSPaymentFileGenerator?dateLine='+dateLine+'&debitLine='+debitLine+'&id='+br.id;
+    } 
+}
