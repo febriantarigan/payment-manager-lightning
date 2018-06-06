@@ -1,0 +1,25 @@
+@isTest
+public class BACSPaymentFileGeneratorControllerTest {
+    static testMethod void testClass()
+    {
+        Account acc = new Account(Name='Aikin Household');
+        insert acc;
+        system.assert(acc.id!=null);
+        Contact con = new Contact(LastName='John Aikin',RSABI_category__c='AB',AccountId=acc.id);
+        insert con;
+        system.assert(con.id!=null);
+        Payment__c pay = new Payment__c(Contact__c=con.id,Date_Due__c=system.today(),Payment_Type__c='BACS',Confirm_Payment__c=false);
+        insert pay;
+        system.assert(pay.id!=null);
+        
+        bacsDetails__c bacsDetail = new bacsDetails__c(Account_Number_For_BAS_Debit__c = '123',Debit_Account_Reference__c='12345',sortCode__c='123');
+        
+        //Create a new instance of standard controller
+	    PageReference pageRef = Page.BACSPaymentFileGenerator;
+        Test.setCurrentPage(pageRef);
+        pageRef.getParameters().put('debitLine', 'H,20181010,0056E0000036NWCQA220181010');
+        pageRef.getParameters().put('debitLine', 'D,20181010,SF20181010101010,804121-00792403');
+        
+        BACSPaymentFileGeneratorController bacspfgc = new BACSPaymentFileGeneratorController();
+    }
+}
