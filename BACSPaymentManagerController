@@ -1,22 +1,81 @@
 public class BACSPaymentManagerController {
     @AuraEnabled
+    public static List<String> getApprover(){
+        List<Payment_Manager_Properties__mdt> paymentManagerProperties = [SELECT Approver_1_Name__c, Approver_2_Name__c, Approver_1_Id__c, 
+                                                                          Approver_2_Id__c FROM Payment_Manager_Properties__mdt WHERE 
+                                                                          DeveloperName='Annual_AB_Payment_Creation'];
+        List<String> listOfApproverNames = new List<String>();
+        listOfApproverNames.add(paymentManagerProperties[0].Approver_1_Name__c);
+        listOfApproverNames.add(paymentManagerProperties[0].Approver_2_Name__c);
+        return listOfApproverNames;      
+    }
+    
+    @AuraEnabled
+    public static Boolean getUserDetails(){
+        User currentUser = [SELECT Id, AB_Payment_Manager__c FROM User WHERE Id=:UserInfo.getUserId() LIMIT 1];
+        return currentUser.AB_Payment_Manager__c;
+    }
+    
+    @AuraEnabled
     public static List<Payment__c> getPayments(String DateDueStart, String DateDueEnd){
         Date startDate = Date.valueOf(DateDueStart);
         Date endDate = Date.valueOf(DateDueEnd);
         
-        if(DateDueStart != null && DateDueEnd != null){
-            List<Payment__c> allFilteredPayments = [SELECT Client_Reference__c, Client_Status__c, Payment_Code_Name__c, Date_Paid__c, Amount_Paid__c, Name, Name__c, Account_Number__c, Sort_Code__c, Contact__r.Client_Reference__c, Contact__r.Status__c, Contact__r.Client_Reference_BACS__c, Date_Due__c, Payment_Code__r.Name, Payment_Type__c FROM Payment__c WHERE Payment_Type__c = 'BACS' AND Date_Paid__c =NULL AND Confirm_Payment__c = false AND Date_Due__c >= :startDate AND Date_Due__c <=:endDate];
-            return allFilteredPayments;      
+        List<Payment__c> allFilteredPayments = [SELECT RSABI_Category__c, Client_Reference__c, Client_Status__c, Payment_Code_Name__c, Date_Paid__c, Amount_Paid__c, Name, Name__c, Account_Number__c, Sort_Code__c, Contact__r.Client_Reference__c, Contact__r.Status__c, Contact__r.Client_Reference_BACS__c, Date_Due__c, Payment_Code__r.Name, Payment_Type__c FROM Payment__c WHERE Contact__r.Test_Record__c = FALSE AND Payment_Type__c = 'BACS' AND Date_Paid__c =NULL AND Confirm_Payment__c = false AND Date_Due__c >= :startDate AND Date_Due__c <=:endDate AND Client_Status__c = 'Active' AND (RSABI_Category__c='AB' OR RSABI_Category__c='SG' OR RSABI_Category__c='CH')];
+        return allFilteredPayments;      
+    }
+    
+    @AuraEnabled
+    public static List<Payment__c> getSAGEPayments(String BatchReferenceId){
+        Batch_Reference__c br = [SELECT Reconciled__c FROM Batch_Reference__c WHERE Id=:BatchReferenceId];
+        if(br.Reconciled__c==true){
+            return null;
         }
         else{
-            List<Payment__c> allFilteredPayments = [SELECT Client_Reference__c, Client_Status__c, Payment_Code_Name__c, Date_Paid__c, Amount_Paid__c, Name, Name__c, Account_Number__c, Sort_Code__c, Contact__r.Client_Reference__c, Contact__r.Status__c, Contact__r.Client_Reference_BACS__c, Date_Due__c, Payment_Code__r.Name, Payment_Type__c FROM Payment__c WHERE Payment_Type__c = 'BACS' AND Date_Paid__c =NULL AND Confirm_Payment__c = false];
-            return allFilteredPayments;      
+            List<Payment__c> allFilteredPayments = [SELECT Id, RSABI_Category__c, Name, Batch_Reference_Name__c, Client_Reference__c, Client_Status__c, Amount_Paid__c, Payment_Code_Name__c,
+                                                    Payment_Type__c, Date_Paid__c FROM Payment__c WHERE Date_Paid__c !=NULL AND Batch_Reference__c =:BatchReferenceId AND SAGE_File_Created__c =NULL];
+            return allFilteredPayments;     
         }
     }
     
     @AuraEnabled
-    public static String verifyPayments(List<Id> selectedPaymentIds, String BACSPaymentDate){
-		Date paymentDate = Date.valueOf(BACSPaymentDate);
+    public static List<Payment__c> getBatchPayments(String DateDueStart, String DateDueEnd){
+        Date startDate = Date.valueOf(DateDueStart);
+        Date endDate = Date.valueOf(DateDueEnd);
+        
+        List<Payment__c> allFilteredPayments = [SELECT RSABI_Category__c, Client_Reference__c, Client_Status__c, Payment_Code_Name__c, Date_Paid__c, Amount_Paid__c, Name, Name__c, Account_Number__c, Sort_Code__c, Contact__r.Client_Reference__c, Contact__r.Status__c, Contact__r.Client_Reference_BACS__c, Date_Due__c, Payment_Code__r.Name, Payment_Type__c FROM Payment__c WHERE Contact__r.Test_Record__c = FALSE AND Date_Due__c >= :startDate AND Date_Due__c <=:endDate AND Batch_Reference__c = NULL];
+        return allFilteredPayments;      
+    }
+    
+    @AuraEnabled
+    public static List<Payment__c> getABArchivePayments(){  
+        Date dt = Date.newInstance(system.today().year(), 4, 1);
+        String archiveRTId = Schema.SObjectType.Payment__c.getRecordTypeInfosByName().get('Archived').getRecordTypeId();
+        List<Payment__c> allFilteredPayments = [SELECT RSABI_Category__c, Client_Reference__c, Client_Status__c, Payment_Code_Name__c, 
+                                                Date_Paid__c, Amount_Paid__c, Name, Name__c, Account_Number__c, Sort_Code__c, 
+                                                Award__r.Name,
+                                                Contact__r.Client_Reference__c, Contact__r.Status__c, Contact__r.Client_Reference_BACS__c, 
+                                                Date_Due__c, Payment_Code__r.Name, Payment_Type__c FROM Payment__c WHERE 
+                                                Contact__r.Test_Record__c = FALSE AND Contact__r.RSABI_category__c='AB' 
+                                                AND Contact__r.Status__c='Active' AND Date_Due__c >=:dt AND RecordTypeId != :archiveRTId
+                                                AND Award__r.Payment_Code__r.Name ='ab' AND Contact__r.AB_Payment_Handling__c='Auto'];
+        return allFilteredPayments;      
+    }
+    
+    @AuraEnabled
+    public static List<Contact> getABCreationClients(){  
+        List<Contact> listABContact = [SELECT Id, Name, Marital_Status__c, OwnerId FROM Contact WHERE Test_Record__c=FALSE AND RSABI_category__c='AB' 
+                                       AND Status__c='Active' AND AB_Payment_Handling__c = 'Auto'];
+        return listABContact;
+    }
+    
+    @AuraEnabled
+    public static String verifyPayments(List<Id> selectedPaymentIds, String BACSPaymentDate, Boolean SAGEBoolean){
+        String SAGENotification='a BACS file';
+        if(SAGEBoolean==true){
+            SAGENotification = 'BACS and SAGE files';
+        }
+        Date paymentDate = Date.valueOf(BACSPaymentDate);
         Integer day = paymentDate.day();
         String dayString;
         Integer month = paymentDate.month();
@@ -34,7 +93,7 @@ public class BACSPaymentManagerController {
             monthString = '0'+month;
         
         String paymentDateString= dayString+'/'+monthString+'/'+yearString;
-
+        
         List<Payment__c> selectedPayments = [SELECT Amount_Paid__c FROM Payment__c WHERE Id IN: selectedPaymentIds];
         Integer numberOfPayments = 0;
         Decimal totalAmount = 0;        
@@ -45,15 +104,65 @@ public class BACSPaymentManagerController {
                 numberOfPayments += 1;
             }
         }
-        return 'You are about to create a BACS file with '+numberOfPayments+' payment records, a BACS payment date of '+paymentDateString+' and total payment amount of £'+totalAmount+'. Payments will be updated with date paid of '+paymentDateString+'. Do you wish to proceed?';
+        return 'You are about to create '+SAGENotification+' with '+numberOfPayments+' payment records, a BACS payment date of '+paymentDateString+' and total payment amount of £'+totalAmount+'. Payments will be updated with date paid of '+paymentDateString+'. Do you wish to proceed?';
+    }
+    
+    @AuraEnabled
+    public static String verifySAGEPayments(List<Id> selectedSAGEPaymentIds){        
+        List<Payment__c> selectedPayments = [SELECT Amount_Paid__c FROM Payment__c WHERE Id IN: selectedSAGEPaymentIds];
+        Integer numberOfPayments = 0;
+        Decimal totalAmount = 0;        
+        
+        if(selectedPayments.size()>0){
+            for(Payment__c pay : selectedPayments){
+                totalAmount += pay.Amount_Paid__c;
+                numberOfPayments += 1;
+            }
+        }
+        return 'You are about to create a SAGE file with '+numberOfPayments+' payment records and total payment amount of £'+totalAmount+'. Do you wish to proceed?';
+    }
+    
+    @AuraEnabled
+    public static String verifyBatchPayments(List<Id> selectedBatchPaymentIds){        
+        List<Payment__c> selectedPayments = [SELECT Amount_Paid__c FROM Payment__c WHERE Id IN: selectedBatchPaymentIds];
+        Integer numberOfPayments = 0;
+        Decimal totalAmount = 0;        
+        
+        if(selectedPayments.size()>0){
+            for(Payment__c pay : selectedPayments){
+                totalAmount += pay.Amount_Paid__c;
+                numberOfPayments += 1;
+            }
+        }
+        return 'You are about to create a batch reference record with '+numberOfPayments+' payment records and total payment amount of £'+totalAmount+'. Do you wish to proceed?';
+    }
+    
+    @AuraEnabled
+    public static String verifyABArchivePayments(List<Id> selectedABArchivePaymentIds){        
+        List<Payment__c> selectedPayments = [SELECT Amount_Paid__c FROM Payment__c WHERE Id IN: selectedABArchivePaymentIds];
+        Integer numberOfPayments = 0;
+        Decimal totalAmount = 0;        
+        
+        if(selectedPayments.size()>0){
+            for(Payment__c pay : selectedPayments){
+                totalAmount += pay.Amount_Paid__c;
+                numberOfPayments += 1;
+            }
+        }
+        return 'You are about to archive '+numberOfPayments+' payment records and total payment amount of £'+totalAmount+'. Do you wish to proceed?';
+    }
+    
+    @AuraEnabled
+    public static Boolean verifyABCreationAllowance(String allowanceId){        
+        Allowance__c allowance = [SELECT Status__c FROM Allowance__c WHERE Id = :allowanceId LIMIT 1];     
+		return allowance.Status__c;
     }
     
     @AuraEnabled
     public static String generateBACSFile(List<Id> selectedPaymentIds, String BACSPaymentDate){
         Date paymentDate = Date.valueOf(BACSPaymentDate);
         Datetime paymentDatetime = paymentDate;
-        Datetime currentDatetime = DateTime.now();
-        
+        Datetime currentDatetime = DateTime.now();        
         String userID = UserInfo.getUserId();
         String currentDay,currentMonth,currentYear,currentHour,currentMinute,currentSecond;
         currentYear = String.valueOf(currentDatetime.year());
@@ -126,9 +235,11 @@ public class BACSPaymentManagerController {
         
         String bacsReferenceName = 'SF'+ currentYear + currentMonth + currentDay + currentHour + currentMinute + currentSecond;
         
-        Batch_Reference__c br = new Batch_Reference__c(Name=bacsReferenceName);
-        insert br;
+        String currentDateString = currentYear+'-'+currentMonth+'-'+currentDay;
+        String currentTimeString = currentHour+':'+currentMinute+':'+currentSecond;
         
+        Batch_Reference__c br = new Batch_Reference__c(Name=bacsReferenceName);
+        insert br;      
         Integer numberOfPayments = 0;
         Decimal totalAmount = 0;
         
@@ -146,5 +257,127 @@ public class BACSPaymentManagerController {
         update br;
         
         return '/apex/BACSPaymentFileGenerator?dateLine='+dateLine+'&debitLine='+debitLine+'&id='+br.id;
-    } 
+    }
+    
+    @AuraEnabled
+    public static String generateSAGEFile(List<Id> selectedPaymentIds){
+        Datetime currentDatetime = system.now();
+        String currentDay,currentMonth,currentYear,currentHour,currentMinute,currentSecond;
+        currentYear = String.valueOf(currentDatetime.year());
+        if(currentDatetime.day() > 9) 
+            currentDay = String.Valueof(currentDatetime.day());
+        else
+            currentDay = '0'+currentDatetime.day();    
+        
+        if(currentDatetime.month() > 9) 
+            currentMonth = String.Valueof(currentDatetime.month());
+        else
+            currentMonth = '0'+currentDatetime.month();
+        
+        if(currentDatetime.hour() > 9) 
+            currentHour = String.Valueof(currentDatetime.hour());
+        else
+            currentHour = '0'+currentDatetime.hour();  
+        
+        if(currentDatetime.minute() > 9) 
+            currentMinute = String.Valueof(currentDatetime.minute());
+        else
+            currentMinute = '0'+currentDatetime.minute();  
+        
+        if(currentDatetime.second() > 9) 
+            currentSecond = String.Valueof(currentDatetime.second());
+        else
+            currentSecond = '0'+currentDatetime.second();  
+        
+        String currentDateString = currentYear+'-'+currentMonth+'-'+currentDay;
+        String currentTimeString = currentHour+':'+currentMinute+':'+currentSecond;
+        
+        Sage_File__c sgf = new Sage_File__c(SAGE_File_Created__c = currentDatetime);
+        insert sgf;
+        
+        List<Payment__c> selectedPayment = new List<Payment__c>();
+        for(Payment__c pay : [SELECT Id, Name, Amount_Paid__c, Sage_File_Created__c, Date_Due__c FROM Payment__c WHERE Id IN: selectedPaymentIds]){
+            pay.Sage_File_Created__c = currentDatetime;
+            pay.Sage_File__c = sgf.id;
+            selectedPayment.add(pay);
+        }
+        update selectedPayment;  
+        
+        return '/apex/SAGEPaymentFileGenerator?dateString='+currentDateString+'&timeString='+currentTimeString+'&sgid='+sgf.id;
+    }
+    
+    @AuraEnabled
+    public static void generateBatchFile(List<Id> selectedPaymentIds){
+        system.debug(selectedPaymentIds);
+        Datetime currentDatetime = DateTime.now();        
+        String currentDay,currentMonth,currentYear,currentHour,currentMinute,currentSecond;
+        currentYear = String.valueOf(currentDatetime.year());
+        if(currentDatetime.day() > 9) 
+            currentDay = String.Valueof(currentDatetime.day());
+        else
+            currentDay = '0'+currentDatetime.day();    
+        
+        if(currentDatetime.month() > 9) 
+            currentMonth = String.Valueof(currentDatetime.month());
+        else
+            currentMonth = '0'+currentDatetime.month();
+        
+        if(currentDatetime.hour() > 9) 
+            currentHour = String.Valueof(currentDatetime.hour());
+        else
+            currentHour = '0'+currentDatetime.hour();  
+        
+        if(currentDatetime.minute() > 9) 
+            currentMinute = String.Valueof(currentDatetime.minute());
+        else
+            currentMinute = '0'+currentDatetime.minute();  
+        
+        if(currentDatetime.second() > 9) 
+            currentSecond = String.Valueof(currentDatetime.second());
+        else
+            currentSecond = '0'+currentDatetime.second();  
+        
+        
+        String bacsReferenceName = 'SF'+ currentYear + currentMonth + currentDay + currentHour + currentMinute + currentSecond;
+        
+        String currentDateString = currentYear+'-'+currentMonth+'-'+currentDay;
+        String currentTimeString = currentHour+':'+currentMinute+':'+currentSecond;
+        
+        Batch_Reference__c br = new Batch_Reference__c(Name=bacsReferenceName);
+        insert br;      
+        system.debug('Batch Id = '+br.id);
+        Integer numberOfPayments = 0;
+        Decimal totalAmount = 0;
+        
+        List<Payment__c> selectedPayment = new List<Payment__c>();
+        for(Payment__c pay : [SELECT Id, Name, Amount_Paid__c, Date_Paid__c, Date_Due__c FROM Payment__c WHERE Id IN: selectedPaymentIds]){
+            pay.Batch_Reference__c = br.id;
+            totalAmount += pay.Amount_Paid__c;
+            numberOfPayments += 1;
+            selectedPayment.add(pay);
+        }
+        br.Total_Amount__c = totalAmount;
+        br.Number_of_Payments__c = numberOfPayments;
+        update selectedPayment;
+        update br;
+    }
+    @AuraEnabled
+    public static void archivePayments(List<Id> selectedPaymentIds){
+        //get archive record type id on payment object
+        String archiveRTId = Schema.SObjectType.Payment__c.getRecordTypeInfosByName().get('Archived').getRecordTypeId();
+        
+        List<Payment__c> selectedPayment = new List<Payment__c>();
+        for(Payment__c pay : [SELECT Id, Name, Amount_Paid__c, Date_Paid__c, Date_Due__c FROM Payment__c WHERE Id IN: selectedPaymentIds]){
+            pay.RecordTypeId = archiveRTId;
+            selectedPayment.add(pay);
+        }
+        update selectedPayment;
+    }
+    
+    @AuraEnabled
+    public static void generateAGAndAward(String FirstDateDue,String LastDateDue, String singleAllowanceId){
+        BACSABCreationBatch btch = new BACSABCreationBatch(FirstDateDue, LastDateDue, singleAllowanceId);
+        database.executeBatch(btch, 50);
+    }
+
 }
