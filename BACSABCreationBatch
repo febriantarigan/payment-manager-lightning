@@ -1,0 +1,27 @@
+global class BACSABCreationBatch implements Database.Batchable<sObject>{
+    public String firstDateDue2;
+    public String lastDateDue2;
+    public String singleAllowanceId2;
+    
+    public BACSABCreationBatch (String FirstDateDue,String LastDateDue, String SingleAllowanceId){
+        firstDateDue2 = FirstDateDue;
+        lastDateDue2 = LastDateDue;
+        singleAllowanceId2 = SingleAllowanceId;
+    }
+    
+    global Database.QueryLocator start(Database.BatchableContext BC) {
+        String query = 'SELECT Id, Name, Marital_Status__c, OwnerId, AccountId FROM Contact WHERE Test_Record__c=FALSE AND RSABI_category__c=\'AB\' AND Status__c=\'Active\' AND AB_Payment_Handling__c = \'Auto\'';
+        return Database.getQueryLocator(query);
+    }
+    
+    global void execute(Database.BatchableContext BC, List<Contact> conList) {
+        system.debug(conList);
+        system.debug(firstDateDue2);
+        system.debug(lastDateDue2);
+        system.debug(singleAllowanceId2);
+        BACSABCreationBatchHandler.ABCreation(firstDateDue2, lastDateDue2, singleAllowanceId2, conList);
+    }   
+    
+    global void finish(Database.BatchableContext BC) {
+    }
+}
