@@ -1,0 +1,65 @@
+@isTest
+public class BACSABCreationBatchTest {
+    static testMethod void generateAGAndAward(){
+        Date firstDueDate = Date.newInstance(2018, 4, 1);
+        Date lastDueDate = Date.newInstance(2019, 3, 31);
+        String firstDay,firstMonth,firstYear;
+        String lastDay,lastMonth,lastYear;
+        
+        if(lastDueDate.day() > 9) 
+            lastDay = String.Valueof(lastDueDate.day());
+        else
+            lastDay = '0'+lastDueDate.day();    
+        
+        if(lastDueDate.month() > 9) 
+            lastMonth = String.Valueof(lastDueDate.month());
+        else
+            lastMonth = '0'+lastDueDate.month();
+        lastYear = String.Valueof(lastDueDate.year());
+        String lastDateStringParameter =lastYear+'-'+lastMonth+'-'+lastDay;
+        
+        if(firstDueDate.day() > 9) 
+            firstDay = String.Valueof(firstDueDate.day());
+        else
+            firstDay = '0'+firstDueDate.day();    
+        
+        if(firstDueDate.month() > 9) 
+            firstMonth = String.Valueof(firstDueDate.month());
+        else
+            firstMonth = '0'+firstDueDate.month();
+        firstYear = String.Valueof(firstDueDate.year());
+        String firstDateStringParameter =firstYear+'-'+firstMonth+'-'+firstDay;
+   
+        Account acc = new Account(Name='Aikin Household');
+        insert acc;
+        system.assert(acc.id!=null);
+        Account acc2 = new Account(Name='Aikin Household2');
+        insert acc2;
+        Contact con = new Contact(LastName='John Aikin',Marital_Status__c='Widowed',RSABI_category__c='AB',AccountId=acc.id,AB_Payment_Handling__c='Auto',Status__c='Active');
+        insert con;
+        system.assert(con.id!=null);
+        Contact con2 = new Contact(LastName='John Aikin2',Marital_Status__c='Married',RSABI_category__c='AB',AccountId=acc2.id,AB_Payment_Handling__c='Auto',Status__c='Active');
+        insert con2;
+        Allowance__c allowance = new Allowance__c(Status__c=true,Single_Amount__c=72,Partnered_Amount__c=102);
+        insert allowance;
+        Payment_Code__c pc = new Payment_Code__c(Name='ab');
+        insert pc;
+        
+        List<Contact> conList = new List<Contact>();
+        conList.add(con);
+        conList.add(con2);
+
+        test.startTest();
+		BACSABCreationBatchHandler.ABCreation(firstDateStringParameter,lastDateStringParameter,allowance.id, conList);
+        test.stopTest();
+        
+        BACSABCreationBatch btch = new BACSABCreationBatch(firstDateStringParameter,lastDateStringParameter,allowance.id);
+        database.executeBatch(btch,50);
+        
+    }
+	static testMethod void isSingle(){
+        system.assertEquals(true, BACSABCreationBatchHandler.isSingle('Widowed'));
+        system.assertEquals(false, BACSABCreationBatchHandler.isSingle('Married'));
+        system.assertEquals(null, BACSABCreationBatchHandler.isSingle(null));
+    }
+}
