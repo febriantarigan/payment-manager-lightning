@@ -1,0 +1,116 @@
+public class BACSABCreationBatchHandler {
+    public static void ABCreation(String FirstDateDue,String LastDateDue, String SingleAllowanceId, List<Contact> conList){
+        Payment_Manager_Properties__mdt paymentManagerProperty = [SELECT Approver_1_Name__c, Approver_2_Name__c, Approver_1_Id__c, 
+                                                                  Approver_2_Id__c, Payment_Code__c FROM Payment_Manager_Properties__mdt WHERE 
+                                                                  DeveloperName='Annual_AB_Payment_Creation' LIMIT 1];
+        Allowance__c allowance = [SELECT Id,Single_Amount__c, Partnered_Amount__c FROM Allowance__c WHERE Id =:singleAllowanceId AND Status__c = true LIMIT 1];
+        Payment_Code__c ABPaymentCode = [SELECT Id FROM Payment_Code__c WHERE Active__c=true AND Name=:paymentManagerProperty.Payment_Code__c LIMIT 1];
+        String AGRTId = Schema.SObjectType.Case.getRecordTypeInfosByName().get('AG').getRecordTypeId();
+        String ActiveRTId = Schema.SObjectType.Payment__c.getRecordTypeInfosByName().get('Active').getRecordTypeId();
+        
+        Date firstDate = Date.valueOf(FirstDateDue);
+        Date lastDate = Date.valueOf(LastDateDue);
+        Date nextFiscalYear = Date.newInstance(system.today().year()+1, 3, 31);
+        Integer numOfMonths;
+        if(lastDate > nextFiscalYear)
+            numOfMonths = 12;
+        else
+            numOfMonths =  (lastDate.month() + ((12*(lastDate.year()-firstDate.year()))-firstDate.month()))+1;        
+        List<Case> listOfAGs = new List<Case>();
+        List<Award__c> listOfAwards = new List<Award__c>();
+        List<Payment__c> listOfPayments = new List<Payment__c>();
+        Integer currentYear = system.today().year();
+        String AGSubject = 'Annual Beneficiary '+String.valueOf(currentYear)+'/'+String.valueOf(currentYear+1);
+        //create case by contact
+        for(Contact con : conList){
+            Case cs = new Case();
+            cs.IsCreatedByAutomation__c = true;
+            cs.RecordTypeId = AGRTId;
+            cs.Status = 'Closed - AG Approved';
+            cs.Origin = 'Batch Creation';
+            cs.Application_Type__c = 'Annual Beneficiary Financial';
+            cs.Subject = AGSubject;
+            cs.ContactId = con.id;
+            cs.AccountId = con.AccountId;
+            cs.Approved_by_1__c = paymentManagerProperty.Approver_1_Name__c;
+            cs.Approved_by_2__c = paymentManagerProperty.Approver_2_Name__c;
+            cs.Approved_when_1__c = system.now();
+            cs.Approved_when_2__c = system.now();
+            Boolean maritalStatus = isSingle(con.Marital_Status__c);
+            if(maritalStatus!=null && maritalStatus){
+                cs.Award_Suggested__c= allowance.Single_Amount__c;
+                cs.Award_Approved__c= allowance.Single_Amount__c * numOfMonths;
+            }
+            else{
+                cs.Award_Suggested__c= allowance.Partnered_Amount__c;
+                cs.Award_Approved__c= allowance.Partnered_Amount__c * numOfMonths;
+            }
+            cs.Number_of_Payments_approved__c=numOfMonths;
+            listOfAGs.add(cs);
+        }
+        insert listOfAGs;
+        Set<Id> AGIds = new Set<Id>();
+        for(Case cs: listOfAGs){
+            AGIds.add(cs.Id);
+        }
+        
+        for(Case cs : [SELECT Id,ContactId, Contact.Marital_Status__c FROM Case WHERE Id IN:AGIds]){
+            Award__c award = new Award__c();
+            award.Application__c = cs.id;
+            award.Contact__c = cs.ContactId;
+            award.Award_Type_Approved__c = 'BACS';
+            award.Payment_Code__c = ABPaymentCode.Id;
+            Boolean maritalStatus = isSingle(cs.Contact.Marital_Status__c);
+            if(maritalStatus!=null && maritalStatus)
+                award.Total_Value__c = allowance.Single_Amount__c * numOfMonths;
+            else
+                award.Total_Value__c =allowance.Partnered_Amount__c * numOfMonths;
+            award.Payments_Generated__c =true;
+            listOfAwards.add(award);
+        }
+        insert listOfAwards;
+        
+        Set<Id> AwardIds = new Set<Id>();
+        for(Award__c cs: listOfAwards){
+            AwardIds.add(cs.Id);
+        }
+        
+        
+        for(Award__c award : [SELECT Id,Contact__c,Award_Type_Approved__c, Application__r.Contact.Marital_Status__c FROM Award__c WHERE Id IN:AwardIds]){
+            for(Integer i=0;i<numOfMonths;i++){
+                Integer numberOfDays = Date.daysInMonth(firstDate.year(), firstDate.month()+i);
+                Date dateDue = Date.newInstance(firstDate.year(), firstDate.month()+i, numberOfDays);
+                Payment__c p = new Payment__c();
+                p.Contact__c = award.Contact__c;
+                p.Award__c = award.id;
+                p.Payment_Code__c = ABPaymentCode.Id;
+                Boolean maritalStatus = isSingle(award.Application__r.Contact.Marital_Status__c);
+                if(maritalStatus!=null && maritalStatus)
+                    p.Amount_Paid__c = allowance.Single_Amount__c;
+                else
+                    p.Amount_Paid__c = allowance.Partnered_Amount__c;                
+                if(i==0) //first date
+                    p.Date_Due__c = firstDate;
+                else
+                    p.Date_Due__c = dateDue;
+                p.Payment_Type__c = award.Award_Type_Approved__c;
+                p.RecordTypeId = ActiveRTId;
+                listOfPayments.add(p);
+            }
+        }
+        insert listOfPayments;
+        system.debug('List of AG '+ listOfAGs.size());
+        system.debug('List of Award '+ listOfAwards.size());
+        system.debug('List of Payments '+ listOfPayments.size());
+    }
+    
+    @TestVisible
+    private static boolean isSingle(String maritalStatus){
+        if(maritalStatus != null && (maritalStatus=='Divorced' || maritalStatus=='Separated' || maritalStatus=='Single' || maritalStatus=='Widowed'))
+            return true;
+        else if(maritalStatus != null && (maritalStatus=='Married' || maritalStatus=='Partnered'))
+            return false;
+        else
+            return null;
+    }
+}
