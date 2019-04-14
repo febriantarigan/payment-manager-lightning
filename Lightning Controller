@@ -7,29 +7,90 @@
             monthDigit = '0' + monthDigit;
         }
         component.set("v.DateDueStart", today.getFullYear() + "-" + monthDigit + "-" + today.getDate());
+        component.set("v.BatchDateDueStart", today.getFullYear() + "-" + monthDigit + "-" + today.getDate());
+        component.set("v.ABCreationFirstDateDue", today.getFullYear() + "-" + monthDigit + "-" + today.getDate());
+        //end of current fiscal year
+        component.set("v.ABCreationLastDateDue", today.getFullYear()+1 + "-03-31");
+        helper.initGetApprover(component, event);
+        helper.initGetUserDetails(component, event);
     },
     
     fetchPayments : function(component, event, helper) {
         helper.fetchPayments(component, event);
     },
     
-    batchConfirmation : function(component, event, helper) {
-        console.log("Batch Confirmation>>>");
+    fetchSAGEPayments : function(component, event, helper) {
+        console.log("Batch Ref Id>>"+component.get("v.payment.Batch_Reference__c"));
+        helper.fetchSAGEPayments(component, event);
+    },
+    
+    fetchBatchPayments : function(component, event, helper) {
+        helper.fetchBatchPayments(component, event);
+    },
+    
+    fetchABArchivePayments : function(component, event, helper) {
+        helper.fetchABArchivePayments(component, event);
+    },
+    
+    BACSConfirmation : function(component, event, helper) {
+        console.log("BACS Confirmation>>>");
         var x = component.get("v.BACSConfirmation");
         component.set("v.BACSConfirmation", true);
-        console.log(x);
-        helper.generateFiles(component,event);
+        var SageBoolean =component.get("v.WithSAGEFile");
+        var selectedPaymentIds = component.get("v.rowsSelected");
+        if(SageBoolean == true){
+            component.set("v.SAGErowsSelected", selectedPaymentIds);
+            helper.generateBACSSAGEFiles(component,event);
+        }
+        else{
+            helper.generateFiles(component,event);
+        }
         component.set("v.ShowModal",false);
-        //document.getElementById("showNotification").style.display = "none";
+    },
+    sageConfirmation : function(component, event, helper) {
+        console.log("SAGE Confirmation>>>");
+        var x = component.get("v.SAGEConfirmation");
+        component.set("v.SAGEConfirmation", true);
+        console.log(x);
+        helper.generateSAGEFiles(component,event);
+        component.set("v.SAGEShowModal",false);
+    },
+    batchConfirmation : function(component, event, helper) {
+        console.log("Batch Confirmation>>>");
+        var x = component.get("v.BatchConfirmation");
+        component.set("v.BatchConfirmation", true);
+        console.log(x);
+        helper.generateBatchRecord(component,event);
+        component.set("v.BatchShowModal",false);
+    },
+    ABArchiveConfirmation : function(component, event, helper) {
+        console.log("ABArchive Confirmation>>>");
+        var x = component.get("v.ABArchiveConfirmation");
+        component.set("v.ABArchiveConfirmation", true);
+        console.log(x);
+        helper.archivePayments(component,event);
+        component.set("v.ABArchiveShowModal",false);
+    },
+    
+    ABCreationConfirmation : function(component, event, helper) {
+        console.log("ABCreation Confirmation>>>");
+        var x = component.get("v.ABCreationConfirmation");
+        component.set("v.ABCreationConfirmation", true);
+        console.log(x);
+        helper.generateABCreationPayments(component,event);
+        component.set("v.ABCreationShowModal",false);
     },
     
     generateFiles : function(component,event,helper){
         var BACSPaymentDate = component.get("v.BACSPaymentDate");
+        var SAGEBoolean = component.get("v.WithSAGEFile");
         var action = component.get("c.verifyPayments");
+        console.log(SAGEBoolean);
         var confirmationMessage;
         action.setParams({
             "selectedPaymentIds": component.get("v.rowsSelected"),
-			"BACSPaymentDate": BACSPaymentDate
+            "BACSPaymentDate": BACSPaymentDate,
+            "SAGEBoolean": SAGEBoolean
         });
         action.setCallback(this, function(response){
             if(response.getState() == 'SUCCESS'){
@@ -39,6 +100,68 @@
             }
         });
         $A.enqueueAction(action);
+    },
+    
+    generateSAGEFiles : function(component,event,helper){
+        var action = component.get("c.verifySAGEPayments");
+        var confirmationMessage;
+        action.setParams({
+            "selectedSAGEPaymentIds": component.get("v.SAGErowsSelected")
+        });
+        action.setCallback(this, function(response){
+            if(response.getState() == 'SUCCESS'){
+                confirmationMessage = response.getReturnValue();
+                component.set("v.SAGENotification", confirmationMessage);
+                component.set("v.SAGEShowModal", true);                
+            }
+        });
+        $A.enqueueAction(action);
+    },
+    
+    generateBatchFiles : function(component,event,helper){
+        var action = component.get("c.verifyBatchPayments");
+        var confirmationMessage;
+        action.setParams({
+            "selectedBatchPaymentIds": component.get("v.BatchrowsSelected")
+        });
+        action.setCallback(this, function(response){
+            if(response.getState() == 'SUCCESS'){
+                confirmationMessage = response.getReturnValue();
+                component.set("v.BatchNotification", confirmationMessage);
+                component.set("v.BatchShowModal", true);                
+            }
+        });
+        $A.enqueueAction(action);
+    },
+    VerifyABArchivePayments : function(component,event,helper){
+        var action = component.get("c.verifyABArchivePayments");
+        var confirmationMessage;
+        action.setParams({
+            "selectedABArchivePaymentIds": component.get("v.ABArchiverowsSelected")
+        });
+        action.setCallback(this, function(response){
+            if(response.getState() == 'SUCCESS'){
+                confirmationMessage = response.getReturnValue();
+                component.set("v.ABArchiveNotification", confirmationMessage);
+                component.set("v.ABArchiveShowModal", true);                
+            }
+        });
+        $A.enqueueAction(action);
+    },
+    
+    validateABCreationPayments : function(component,event,helper){
+        var firstDueDate = component.get("v.ABCreationFirstDateDue");
+        var lastDueDate = component.get("v.ABCreationLastDateDue");
+        var allowance = component.get("v.award.Allowance__c");
+        var today = new Date();
+        var maxFinancialDate = new Date(today.getFullYear()+1,3,31);
+        if(firstDueDate > lastDueDate)
+            alert('First Due Date is greater than Last Due Date');
+        else if(lastDueDate > maxFinancialDate)
+            alert('Last Due Date cannot exceed next fiscal year');
+        else{
+            helper.verifyABCreationAllowance(component,event);                           
+        } 
     },
     
     updateSelectedRows : function(component, event, helper) {
@@ -52,21 +175,67 @@
         component.set("v.rowsSelected", setRows); // <-- Crashed datatable if "v.selectedRows"
     },
     
+    updateSAGESelectedRows : function(component, event, helper) {
+        var selectedRows = event.getParam('selectedRows');  
+        var setRows = [];
+        for (var i = 0; i < selectedRows.length; i++){
+            setRows.push(selectedRows[i].Id);
+        }
+        console.log(setRows);
+        console.log(setRows.length);
+        component.set("v.SAGErowsSelected", setRows); // <-- Crashed datatable if "v.selectedRows"*/
+    },
+    
+    updateBatchSelectedRows : function(component, event, helper) {
+        var selectedRows = event.getParam('selectedRows');  
+        var setRows = [];
+        for (var i = 0; i < selectedRows.length; i++){
+            setRows.push(selectedRows[i].Id);
+        }
+        console.log(setRows);
+        console.log(setRows.length);
+        component.set("v.BatchrowsSelected", setRows); // <-- Crashed datatable if "v.selectedRows"*/
+    },
+    
+    updateABArchiveSelectedRows : function(component, event, helper) {
+        var selectedRows = event.getParam('selectedRows');  
+        var setRows = [];
+        for (var i = 0; i < selectedRows.length; i++){
+            setRows.push(selectedRows[i].Id);
+        }
+        console.log(setRows);
+        console.log(setRows.length);
+        component.set("v.ABArchiverowsSelected", setRows); // <-- Crashed datatable if "v.selectedRows"*/
+    },
+    
     getHomePage : function(component, event, helper) {
         console.log("Home Page>>>>");
         var x = component.get("v.BACSConfirmation");
-        console.log(x);
+        console.log('BACS Confirmation>> ' +x);
+        var y = component.get("v.SAGEConfirmation");
+        console.log('SAGE Confirmation>> ' +y);
+        var z = component.get("v.BatchConfirmation");
+        console.log('Batch Confirmation>> ' +z);
+        var a = component.get("v.ABArchiveConfirmation");
+        console.log('AB Archive Confirmation>> ' +y);
+        var b = component.get("v.ABCreationConfirmation");
+        console.log('AB Creation Confirmation>> ' +z);
         component.set("v.ShowModal", false);
-        //		document.getElementById("showNotification").style.display = "none";
+        component.set("v.SAGEShowModal", false);
+        component.set("v.BatchShowModal", false);
+        component.set("v.ABArchiveShowModal", false);
+        component.set("v.ABCreationShowModal", false);
     },
     
-    waiting : function(component, event, helper) {
-        //component.set("v.wait", "updating...");
-        document.getElementById("showspinner").style.display = "block";
+    showSpinner: function(component, event, helper) {
+        // make Spinner attribute true for display loading spinner 
+        component.set("v.Spinner", true); 
     },
-    doneWaiting : function(component, event, helper) {
-        //component.set("v.wait", "");
-        document.getElementById("showspinner").style.display = "none";
+    
+    // this function automatic call by aura:doneWaiting event 
+    hideSpinner : function(component,event,helper){
+        // make Spinner attribute to false for hide loading spinner    
+        component.set("v.Spinner", false);
     },
     
     updateColumnSorting: function (cmp, event, helper) {
@@ -76,5 +245,221 @@
         cmp.set("v.sortedBy", fieldName);
         cmp.set("v.sortedDirection", sortDirection);
         helper.sortData(cmp, fieldName, sortDirection);
+    },
+    
+    updateSAGEColumnSorting: function (cmp, event, helper) {
+        var fieldName = event.getParam('fieldName');
+        var sortDirection = event.getParam('sortDirection');
+        // assign the latest attribute with the sorted column fieldName and sorted direction
+        cmp.set("v.sortedBy", fieldName);
+        cmp.set("v.sortedDirection", sortDirection);
+        helper.sortSAGEData(cmp, fieldName, sortDirection);
+    },
+    
+    updateBatchColumnSorting: function (cmp, event, helper) {
+        var fieldName = event.getParam('fieldName');
+        var sortDirection = event.getParam('sortDirection');
+        // assign the latest attribute with the sorted column fieldName and sorted direction
+        cmp.set("v.sortedBy", fieldName);
+        cmp.set("v.sortedDirection", sortDirection);
+        helper.sortBatchData(cmp, fieldName, sortDirection);
+    },
+    
+    updateABArchiveColumnSorting: function (cmp, event, helper) {
+        var fieldName = event.getParam('fieldName');
+        var sortDirection = event.getParam('sortDirection');
+        // assign the latest attribute with the sorted column fieldName and sorted direction
+        cmp.set("v.sortedBy", fieldName);
+        cmp.set("v.sortedDirection", sortDirection);
+        helper.sortABArchiveData(cmp, fieldName, sortDirection);
+    },
+    
+    BACSTab: function(component, event, helper) {
+        var tab1 = component.find('BACSId');
+        var TabOnedata = component.find('BACSTabDataId');
+        
+        var tab2 = component.find('SAGEId');
+        var TabTwoData = component.find('SAGETabDataId');
+        
+        var tab3 = component.find('BatchId');
+        var TabThreeData = component.find('BatchTabDataId');
+        
+        var tab4 = component.find('ABArchiveId');
+        var TabFourData = component.find('ABArchiveTabDataId');
+        
+        var tab5 = component.find('ABCreationId');
+        var TabFiveData = component.find('ABCreationTabDataId');
+        //show and Active BACS tab
+        $A.util.addClass(tab1, 'slds-active');
+        $A.util.addClass(TabOnedata, 'slds-show');
+        $A.util.removeClass(TabOnedata, 'slds-hide');
+        // Hide and deactivate others tab
+        $A.util.removeClass(tab2, 'slds-active');
+        $A.util.removeClass(TabTwoData, 'slds-show');
+        $A.util.addClass(TabTwoData, 'slds-hide');
+        
+        $A.util.removeClass(tab3, 'slds-active');
+        $A.util.removeClass(TabThreeData, 'slds-show');
+        $A.util.addClass(TabThreeData, 'slds-hide');
+        
+        $A.util.removeClass(tab4, 'slds-active');
+        $A.util.removeClass(TabFourData, 'slds-show');
+        $A.util.addClass(TabFourData, 'slds-hide');
+        
+        $A.util.removeClass(tab5, 'slds-active');
+        $A.util.removeClass(TabFiveData, 'slds-show');
+        $A.util.addClass(TabFiveData, 'slds-hide');
+    },
+    SAGETab: function(component, event, helper) {
+        
+        var tab1 = component.find('BACSId');
+        var TabOnedata = component.find('BACSTabDataId');
+        
+        var tab2 = component.find('SAGEId');
+        var TabTwoData = component.find('SAGETabDataId');
+        
+        var tab3 = component.find('BatchId');
+        var TabThreeData = component.find('BatchTabDataId');
+        
+        var tab4 = component.find('ABArchiveId');
+        var TabFourData = component.find('ABArchiveTabDataId');
+        
+        var tab5 = component.find('ABCreationId');
+        var TabFiveData = component.find('ABCreationTabDataId');
+        //show and Active SAGE Tab
+        $A.util.addClass(tab2, 'slds-active');
+        $A.util.removeClass(TabTwoData, 'slds-hide');
+        $A.util.addClass(TabTwoData, 'slds-show');
+        // Hide and deactivate others tab
+        $A.util.removeClass(tab1, 'slds-active');
+        $A.util.removeClass(TabOnedata, 'slds-show');
+        $A.util.addClass(TabOnedata, 'slds-hide');
+        
+        $A.util.removeClass(tab3, 'slds-active');
+        $A.util.removeClass(TabThreeData, 'slds-show');
+        $A.util.addClass(TabThreeData, 'slds-hide');
+        
+        $A.util.removeClass(tab4, 'slds-active');
+        $A.util.removeClass(TabFourData, 'slds-show');
+        $A.util.addClass(TabFourData, 'slds-hide');
+        
+        $A.util.removeClass(tab5, 'slds-active');
+        $A.util.removeClass(TabFiveData, 'slds-show');
+        $A.util.addClass(TabFiveData, 'slds-hide');
+    },
+    BatchTab: function(component, event, helper) {
+        var tab1 = component.find('BACSId');
+        var TabOnedata = component.find('BACSTabDataId');
+        
+        var tab2 = component.find('SAGEId');
+        var TabTwoData = component.find('SAGETabDataId');
+        
+        var tab3 = component.find('BatchId');
+        var TabThreeData = component.find('BatchTabDataId');
+        
+        var tab4 = component.find('ABArchiveId');
+        var TabFourData = component.find('ABArchiveTabDataId');
+        
+        var tab5 = component.find('ABCreationId');
+        var TabFiveData = component.find('ABCreationTabDataId');
+        //show and Active color Tab
+        $A.util.addClass(tab3, 'slds-active');
+        $A.util.addClass(TabThreeData, 'slds-show');
+        $A.util.removeClass(TabThreeData, 'slds-hide');
+        // Hide and deactivate others tab
+        $A.util.removeClass(tab1, 'slds-active');
+        $A.util.removeClass(TabOnedata, 'slds-show');
+        $A.util.addClass(TabOnedata, 'slds-hide');
+        
+        $A.util.removeClass(tab2, 'slds-active');
+        $A.util.removeClass(TabTwoData, 'slds-show');
+        $A.util.addClass(TabTwoData, 'slds-hide');
+        
+        $A.util.removeClass(tab4, 'slds-active');
+        $A.util.removeClass(TabFourData, 'slds-show');
+        $A.util.addClass(TabFourData, 'slds-hide');
+        
+        $A.util.removeClass(tab5, 'slds-active');
+        $A.util.removeClass(TabFiveData, 'slds-show');
+        $A.util.addClass(TabFiveData, 'slds-hide');
+    },
+    
+    ABArchiveTab: function(component, event, helper) {
+        var tab1 = component.find('BACSId');
+        var TabOnedata = component.find('BACSTabDataId');
+        
+        var tab2 = component.find('SAGEId');
+        var TabTwoData = component.find('SAGETabDataId');
+        
+        var tab3 = component.find('BatchId');
+        var TabThreeData = component.find('BatchTabDataId');
+        
+        var tab4 = component.find('ABArchiveId');
+        var TabFourData = component.find('ABArchiveTabDataId');
+        
+        var tab5 = component.find('ABCreationId');
+        var TabFiveData = component.find('ABCreationTabDataId');
+        //show and Active color Tab
+        $A.util.addClass(tab4, 'slds-active');
+        $A.util.addClass(TabFourData, 'slds-show');
+        $A.util.removeClass(TabFourData, 'slds-hide');
+        // Hide and deactivate others tab
+        $A.util.removeClass(tab1, 'slds-active');
+        $A.util.removeClass(TabOnedata, 'slds-show');
+        $A.util.addClass(TabOnedata, 'slds-hide');
+        
+        $A.util.removeClass(tab2, 'slds-active');
+        $A.util.removeClass(TabTwoData, 'slds-show');
+        $A.util.addClass(TabTwoData, 'slds-hide');
+        
+        $A.util.removeClass(tab3, 'slds-active');
+        $A.util.removeClass(TabThreeData, 'slds-show');
+        $A.util.addClass(TabThreeData, 'slds-hide');
+        
+        $A.util.removeClass(tab5, 'slds-active');
+        $A.util.removeClass(TabFiveData, 'slds-show');
+        $A.util.addClass(TabFiveData, 'slds-hide');
+    },
+    
+    ABCreationTab: function(component, event, helper) {
+        var tab1 = component.find('BACSId');
+        var TabOnedata = component.find('BACSTabDataId');
+        
+        var tab2 = component.find('SAGEId');
+        var TabTwoData = component.find('SAGETabDataId');
+        
+        var tab3 = component.find('BatchId');
+        var TabThreeData = component.find('BatchTabDataId');
+        
+        var tab4 = component.find('ABArchiveId');
+        var TabFourData = component.find('ABArchiveTabDataId');
+        
+        var tab5 = component.find('ABCreationId');
+        var TabFiveData = component.find('ABCreationTabDataId');
+        //show and Active color Tab
+        $A.util.addClass(tab5, 'slds-active');
+        $A.util.addClass(TabFiveData, 'slds-show');
+        $A.util.removeClass(TabFiveData, 'slds-hide');
+        // Hide and deactivate others tab
+        $A.util.removeClass(tab1, 'slds-active');
+        $A.util.removeClass(TabOnedata, 'slds-show');
+        $A.util.addClass(TabOnedata, 'slds-hide');
+        
+        $A.util.removeClass(tab2, 'slds-active');
+        $A.util.removeClass(TabTwoData, 'slds-show');
+        $A.util.addClass(TabTwoData, 'slds-hide');
+        
+        $A.util.removeClass(tab4, 'slds-active');
+        $A.util.removeClass(TabFourData, 'slds-show');
+        $A.util.addClass(TabFourData, 'slds-hide');
+        
+        $A.util.removeClass(tab3, 'slds-active');
+        $A.util.removeClass(TabThreeData, 'slds-show');
+        $A.util.addClass(TabThreeData, 'slds-hide');       
+    },
+    
+    checkLookUpId: function(component, event, helper){
+        var batchId = component.get("v.payment2.Batch_Reference__c");
+        console.log(batchId);
     }
 })
