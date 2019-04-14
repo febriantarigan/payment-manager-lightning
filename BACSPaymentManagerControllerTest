@@ -1,10 +1,15 @@
 @isTest
 public class BACSPaymentManagerControllerTest {
+    static testMethod void getApprover(){
+        List<String> approvers = BACSPaymentManagerController.getApprover();
+        system.assertEquals(2, approvers.size());
+    }
+    
     static testMethod void getPayments(){
         Account acc = new Account(Name='Aikin Household');
         insert acc;
         system.assert(acc.id!=null);
-        Contact con = new Contact(LastName='John Aikin',RSABI_category__c='AB',AccountId=acc.id);
+        Contact con = new Contact(LastName='John Aikin',RSABI_category__c='AB',AccountId=acc.id, Status__c = 'Active');
         insert con;
         system.assert(con.id!=null);
         Payment__c pay = new Payment__c(Contact__c=con.id,Date_Due__c=system.today(),Payment_Type__c='BACS',Confirm_Payment__c=false);
@@ -26,7 +31,89 @@ public class BACSPaymentManagerControllerTest {
         
         system.assertEquals(listPayments.size(),1);
     }
+    
+    static testMethod void getSAGEPayments(){
+        Account acc = new Account(Name='Aikin Household');
+        insert acc;
+        system.assert(acc.id!=null);
+        Contact con = new Contact(LastName='John Aikin',RSABI_category__c='AB',AccountId=acc.id);
+        insert con;
+        system.assert(con.id!=null);
+        Batch_Reference__c br = new Batch_Reference__c(Name='test br',Reconciled__c = false);
+        insert br;
+        Batch_Reference__c br2 = new Batch_Reference__c(Name='test br',Reconciled__c = true);
+        insert br2;
+        Payment__c pay = new Payment__c(Batch_Reference__c = br.id, Contact__c=con.id,Date_Due__c=system.today(),Date_Paid__c=system.today(),Payment_Type__c='BACS',Confirm_Payment__c=false);
+        insert pay;
+        Payment__c pay2 = new Payment__c(Batch_Reference__c = br2.id, Contact__c=con.id,Date_Due__c=system.today(),Date_Paid__c=system.today(),Payment_Type__c='BACS',Confirm_Payment__c=false);
+        insert pay2;
+        system.assert(pay.id!=null);
+        
+        List<Payment__c> listPayments =  BACSPaymentManagerController.getSAGEPayments(br.id);
+        
+        system.assertEquals(1,listPayments.size());
+        
+        List<Payment__c> listPayments2 = BACSPaymentManagerController.getSAGEPayments(br2.id);
+    }
+    
+    static testMethod void getBatchPayments(){
+        Account acc = new Account(Name='Aikin Household');
+        insert acc;
+        system.assert(acc.id!=null);
+        Contact con = new Contact(LastName='John Aikin',RSABI_category__c='AB',AccountId=acc.id, Status__c = 'Active');
+        insert con;
+        system.assert(con.id!=null);
+        Payment__c pay = new Payment__c(Contact__c=con.id,Date_Due__c=system.today(),Payment_Type__c='BACS',Confirm_Payment__c=false);
+        insert pay;
+        system.assert(pay.id!=null);
+        
+        String day,month;
+        if(system.today().day() > 9) 
+            day = String.Valueof(system.today().day());
+        else
+            day = '0'+system.today().day();    
+        
+        if(system.today().month() > 9) 
+            month = String.Valueof(system.today().month());
+        else
+            month = '0'+system.today().month();
+        String date2 = system.today().year() +'-'+month+'-'+day;
+        List<Payment__c> listPayments =  BACSPaymentManagerController.getBatchPayments(date2,date2);
+        
+        system.assertEquals(listPayments.size(),1);
+    }
+    
+    static testMethod void getABArchivePayments(){
+        Date dt = Date.newInstance(system.today().year(), 4, 1);
+        String activeRTId = Schema.SObjectType.Payment__c.getRecordTypeInfosByName().get('Active').getRecordTypeId();
+        String AGRTId = Schema.SObjectType.Case.getRecordTypeInfosByName().get('AG').getRecordTypeId();
+        Account acc = new Account(Name='Aikin Household');
+        insert acc;
+        system.assert(acc.id!=null);
+        Contact con = new Contact(LastName='John Aikin',RSABI_category__c='AB',AccountId=acc.id, Status__c = 'Active',AB_Payment_Handling__c='Auto');
+        insert con;
+        system.assert(con.id!=null);
+        
+        Case ag = new Case(RecordTypeId=AGRTId, Status = 'Closed - AG Approved',Origin = 'Batch Creation',Subject = 'test',ContactId=con.id, AccountId=acc.id, Approved_by_1__c = 'test 1',Approved_by_2__c = 'test 2', Award_Suggested__c=100,Award_Approved__c=1200,Number_of_Payments_approved__c=12);
+        insert ag;
+        Payment_Code__c pc = new Payment_Code__c(Name='ab');
+        insert pc;
+        Award__c aw = new Award__c(Payment_Code__c=pc.id, Application__c=ag.id, Award_Type_Approved__c='BACS', Contact__c=con.id, Total_Value__c=1200);
+        insert aw;
+        Payment__c pay = new Payment__c(Award__c=aw.id,Contact__c=con.id,Date_Due__c=dt,Payment_Type__c='BACS', RecordTypeId=activeRTId, Amount_Paid__c=100, Payment_Code__c=pc.id);
+        insert pay;
+        List<Contact> listContact = BACSPaymentManagerController.getABCreationClients();
+        system.assertEquals(1, listContact.size());
+        List<Payment__c> listPayment = BACSPaymentManagerController.getABArchivePayments();
+        system.assertEquals(1, listPayment.size());
+        
+        String message = BACSPaymentManagerController.verifyABArchivePayments(new List<String>{pay.id});
+        system.assertEquals('You are about to archive 1 payment records and total payment amount of £100.00. Do you wish to proceed?', message);
+    	BACSPaymentManagerController.archivePayments(new List<String>{pay.id});
+    }
+    
     static testMethod void verifyPayments(){
+        Boolean SAGEBoolean = true;
         Account acc = new Account(Name='Aikin Household');
         insert acc;
         system.assert(acc.id!=null);
@@ -39,15 +126,68 @@ public class BACSPaymentManagerControllerTest {
         List<Id> selectedPaymentId = new List<Id>();
         selectedPaymentId.add(pay.id);
         String paymentDateString = '2018-01-01';
+        String paymentDateString2 = '2018-10-10';
         
-        String returnString =  BACSPaymentManagerController.verifyPayments(selectedPaymentId,paymentDateString);
-        
-        system.assertEquals(returnString, 'You are about to create a BACS file with 1 payment records, a BACS payment date of 01/01/2018 and total payment amount of £100.00. Payments will be updated with date paid of 01/01/2018. Do you wish to proceed?');
+        String returnString =  BACSPaymentManagerController.verifyPayments(selectedPaymentId,paymentDateString,SAGEBoolean);
+        String returnString2 =  BACSPaymentManagerController.verifyPayments(selectedPaymentId,paymentDateString2,SAGEBoolean);
+        system.assertEquals(returnString, 'You are about to create BACS and SAGE files with 1 payment records, a BACS payment date of 01/01/2018 and total payment amount of £100.00. Payments will be updated with date paid of 01/01/2018. Do you wish to proceed?');
     }
+    
+    static testMethod void verifySAGEPayments(){
+        Account acc = new Account(Name='Aikin Household');
+        insert acc;
+        system.assert(acc.id!=null);
+        Contact con = new Contact(LastName='John Aikin',RSABI_category__c='AB',AccountId=acc.id);
+        insert con;
+        system.assert(con.id!=null);
+        Payment__c pay = new Payment__c(Contact__c=con.id,Date_Due__c=system.today(),Payment_Type__c='BACS',Confirm_Payment__c=false,Amount_Paid__c=100);
+        insert pay;
+        system.assert(pay.id!=null);
+        List<Id> selectedPaymentId = new List<Id>();
+        selectedPaymentId.add(pay.id);
+        
+        String returnString =  BACSPaymentManagerController.verifySAGEPayments(selectedPaymentId);
+        
+        system.assertEquals(returnString, 'You are about to create a SAGE file with 1 payment records and total payment amount of £100.00. Do you wish to proceed?');
+    }
+    
+    static testMethod void verifyBatchPayments(){
+        Account acc = new Account(Name='Aikin Household');
+        insert acc;
+        system.assert(acc.id!=null);
+        Contact con = new Contact(LastName='John Aikin',RSABI_category__c='AB',AccountId=acc.id);
+        insert con;
+        system.assert(con.id!=null);
+        Payment__c pay = new Payment__c(Contact__c=con.id,Date_Due__c=system.today(),Payment_Type__c='BACS',Confirm_Payment__c=false,Amount_Paid__c=100);
+        insert pay;
+        system.assert(pay.id!=null);
+        List<Id> selectedPaymentId = new List<Id>();
+        selectedPaymentId.add(pay.id);
+        
+        String returnString =  BACSPaymentManagerController.verifyBatchPayments(selectedPaymentId);
+        system.assertEquals(returnString,'You are about to create a batch reference record with 1 payment records and total payment amount of £100.00. Do you wish to proceed?');
+    }
+    
     static testMethod void generateBACSFile(){
         Datetime currentDateTime = system.now();
-        Date paymentDate = Date.newInstance(2018, 10, 10);
+        Datetime paymentDate = Datetime.newInstance(2018, 10, 10,10,10,10);
+        Datetime paymentDate2 = Datetime.newInstance(2018, 4, 4,4,4,4);
         String paymentDay,paymentMonth,paymentYear;
+        String paymentDay2,paymentMonth2,paymentYear2;
+        
+        
+        if(paymentDate2.day() > 9) 
+            paymentDay2 = String.Valueof(paymentDate2.day());
+        else
+            paymentDay2 = '0'+paymentDate2.day();    
+        
+        if(paymentDate2.month() > 9) 
+            paymentMonth2 = String.Valueof(paymentDate2.month());
+        else
+            paymentMonth2 = '0'+paymentDate2.month();
+        paymentYear2 = String.Valueof(paymentDate2.year());
+        String paymentDateString2 =paymentYear2+paymentMonth2+paymentDay2;
+        String paymentDateStringParameter2 =paymentYear2+'-'+paymentMonth2+'-'+paymentDay2;
         
         if(paymentDate.day() > 9) 
             paymentDay = String.Valueof(paymentDate.day());
@@ -62,7 +202,8 @@ public class BACSPaymentManagerControllerTest {
         String paymentDateString =paymentYear+paymentMonth+paymentDay;
         String paymentDateStringParameter =paymentYear+'-'+paymentMonth+'-'+paymentDay;
         
-		String day,month,year,hour,minute,second;
+        
+        String day,month,year,hour,minute,second;
         if(currentDateTime.day() > 9) 
             day = String.Valueof(currentDateTime.day());
         else
@@ -78,19 +219,19 @@ public class BACSPaymentManagerControllerTest {
         else
             hour = '0'+currentDatetime.hour();  
         year = String.Valueof(currentDatetime.year());
-
+        
         if(currentDatetime.minute() > 9) 
             minute = String.Valueof(currentDatetime.minute());
         else
             minute = '0'+currentDatetime.minute();  
-
+        
         if(currentDatetime.second() > 9) 
             second = String.Valueof(currentDatetime.second());
         else
             second = '0'+currentDatetime.second();
         String currentDatetimeString = year+month+day+hour+minute+second;
         String currentDateString = year+month+day;
-
+        
         
         Account acc = new Account(Name='Aikin Household');
         insert acc;
@@ -110,8 +251,169 @@ public class BACSPaymentManagerControllerTest {
         insert bacsDetails;
         
         test.startTest();
-            String returnString =  BACSPaymentManagerController.generateBACSFile(selectedPaymentId,paymentDateStringParameter);
-            system.assert(returnString.contains('/apex/BACSPaymentFileGenerator?dateLine=')); 
+        String returnString =  BACSPaymentManagerController.generateBACSFile(selectedPaymentId,paymentDateStringParameter);
+        String returnString2 =  BACSPaymentManagerController.generateBACSFile(selectedPaymentId,paymentDateStringParameter2);
+        system.assert(returnString.contains('/apex/BACSPaymentFileGenerator?dateLine=')); 
         test.stopTest();
     }
+    
+    static testMethod void generateSAGEFile(){
+        Datetime currentDateTime = Datetime.newInstance(2018, 9, 6, 0, 0, 0);
+        
+        String day,month,year,hour,minute,second;
+        if(currentDateTime.day() > 9) 
+            day = String.Valueof(currentDateTime.day());
+        else
+            day = '0'+currentDateTime.day();    
+        
+        if(currentDateTime.month() > 9) 
+            month = String.Valueof(currentDateTime.month());
+        else
+            month = '0'+currentDateTime.month();
+        
+        if(currentDatetime.hour() > 9) 
+            hour = String.Valueof(currentDatetime.hour());
+        else
+            hour = '0'+currentDatetime.hour();  
+        year = String.Valueof(currentDatetime.year());
+        
+        if(currentDatetime.minute() > 9) 
+            minute = String.Valueof(currentDatetime.minute());
+        else
+            minute = '0'+currentDatetime.minute();  
+        
+        if(currentDatetime.second() > 9) 
+            second = String.Valueof(currentDatetime.second());
+        else
+            second = '0'+currentDatetime.second();
+        
+        Account acc = new Account(Name='Aikin Household');
+        insert acc;
+        system.assert(acc.id!=null);
+        Contact con = new Contact(LastName='John Aikin',RSABI_category__c='AB',AccountId=acc.id);
+        insert con;
+        system.assert(con.id!=null);
+        Batch_Reference__c br = new Batch_Reference__c(Name='SFTEST');
+        insert br;
+        Sage_File__c sgf = new Sage_File__c(SAGE_File_Created__c = currentDatetime);
+        insert sgf;
+        Payment__c pay = new Payment__c(SAGE_File__c=sgf.id, SAGE_File_Created__c = currentDatetime, Contact__c=con.id,Date_Due__c=system.today(),Payment_Type__c='BACS',Confirm_Payment__c=false,Amount_Paid__c=100,Batch_Reference__c=br.id);
+        insert pay;
+        system.assert(pay.id!=null);
+        List<Id> selectedPaymentId = new List<Id>();
+        selectedPaymentId.add(pay.id);
+        
+        String currentDateString = year+'-'+month+'-'+day;
+        String currentTimeString = hour+':'+minute+':'+second;
+        
+        test.startTest();
+        String returnString =  BACSPaymentManagerController.generateSAGEFile(selectedPaymentId);
+        system.assert(returnString.contains('/apex/SAGEPaymentFileGenerator?dateString')); 
+        test.stopTest();
+    }
+    
+    static testMethod void generateBatchFile(){
+        Datetime currentDateTime = system.now();
+        String day,month,year,hour,minute,second;
+        if(currentDateTime.day() > 9) 
+            day = String.Valueof(currentDateTime.day());
+        else
+            day = '0'+currentDateTime.day();    
+        
+        if(currentDateTime.month() > 9) 
+            month = String.Valueof(currentDateTime.month());
+        else
+            month = '0'+currentDateTime.month();
+        
+        if(currentDatetime.hour() > 9) 
+            hour = String.Valueof(currentDatetime.hour());
+        else
+            hour = '0'+currentDatetime.hour();  
+        year = String.Valueof(currentDatetime.year());
+        
+        if(currentDatetime.minute() > 9) 
+            minute = String.Valueof(currentDatetime.minute());
+        else
+            minute = '0'+currentDatetime.minute();  
+        
+        if(currentDatetime.second() > 9) 
+            second = String.Valueof(currentDatetime.second());
+        else
+            second = '0'+currentDatetime.second();
+        String currentDatetimeString = year+month+day+hour+minute+second;
+        String currentDateString = year+month+day;
+        
+        
+        Account acc = new Account(Name='Aikin Household');
+        insert acc;
+        system.assert(acc.id!=null);
+        Contact con = new Contact(LastName='John Aikin',RSABI_category__c='AB',AccountId=acc.id);
+        insert con;
+        system.assert(con.id!=null);
+        Batch_Reference__c br = new Batch_Reference__c(Name='SF'+currentDatetimeString);
+        insert br;
+        Payment__c pay = new Payment__c(Contact__c=con.id,Date_Due__c=system.today(),Payment_Type__c='BACS',Confirm_Payment__c=false,Amount_Paid__c=100,Batch_Reference__c=br.id);
+        insert pay;
+        system.assert(pay.id!=null);
+        List<Id> selectedPaymentId = new List<Id>();
+        selectedPaymentId.add(pay.id);
+        
+        test.startTest();
+        BACSPaymentManagerController.generateBatchFile(selectedPaymentId);
+        test.stopTest();
+    }
+    
+    static testMethod void generateAGAndAward(){
+        Date firstDueDate = Date.newInstance(2018, 4, 1);
+        Date lastDueDate = Date.newInstance(2019, 3, 31);
+        String firstDay,firstMonth,firstYear;
+        String lastDay,lastMonth,lastYear;
+        
+        if(lastDueDate.day() > 9) 
+            lastDay = String.Valueof(lastDueDate.day());
+        else
+            lastDay = '0'+lastDueDate.day();    
+        
+        if(lastDueDate.month() > 9) 
+            lastMonth = String.Valueof(lastDueDate.month());
+        else
+            lastMonth = '0'+lastDueDate.month();
+        lastYear = String.Valueof(lastDueDate.year());
+        String lastDateStringParameter =lastYear+'-'+lastMonth+'-'+lastDay;
+        
+        if(firstDueDate.day() > 9) 
+            firstDay = String.Valueof(firstDueDate.day());
+        else
+            firstDay = '0'+firstDueDate.day();    
+        
+        if(firstDueDate.month() > 9) 
+            firstMonth = String.Valueof(firstDueDate.month());
+        else
+            firstMonth = '0'+firstDueDate.month();
+        firstYear = String.Valueof(firstDueDate.year());
+        String firstDateStringParameter =firstYear+'-'+firstMonth+'-'+firstDay;
+   
+        Account acc = new Account(Name='Aikin Household');
+        insert acc;
+        system.assert(acc.id!=null);
+        Account acc2 = new Account(Name='Aikin Household2');
+        insert acc2;
+        Contact con = new Contact(LastName='John Aikin',Marital_Status__c='Widowed',RSABI_category__c='AB',AccountId=acc.id,AB_Payment_Handling__c='Auto',Status__c='Active');
+        insert con;
+        system.assert(con.id!=null);
+        Contact con2 = new Contact(LastName='John Aikin2',Marital_Status__c='Married',RSABI_category__c='AB',AccountId=acc2.id,AB_Payment_Handling__c='Auto',Status__c='Active');
+        insert con2;
+        Allowance__c allowance = new Allowance__c(Status__c=true,Single_Amount__c=72,Partnered_Amount__c=102);
+        insert allowance;
+        Payment_Code__c pc = new Payment_Code__c(Name='ab');
+        insert pc;
+        
+        test.startTest();
+		BACSPaymentManagerController.generateAGAndAward(firstDateStringParameter,lastDateStringParameter,allowance.id);
+        test.stopTest();
+        
+        Boolean assert = BACSPaymentManagerController.verifyABCreationAllowance(allowance.id);
+        system.assertEquals(true, assert);
+    }
+    
 }
